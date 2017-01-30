@@ -91,11 +91,11 @@ func main() {
 	}
 
 	// Try to find item
-	line := "wts 10 dose blood of the wolf wurmslayermask of wurms>|$swiftwindearthcallerwurmslayerdagger of marnek 250k today I've got some other cool items, WTB mask of wurmsAle 500p spear of fate 50k"
-	//line = "Sneeki auctions, 'BUYING Rogue Epic : D  // SELLING Shiny Brass Idol 700pp PST'"
+	line := "wts 10 dose blood of the wolf wurmslayermask of wurms>|$swiftwindearthcallerwurmslayerdagger of marnek 250k today I've got some other cool items, WTB mask of wurmsAle 500p spear of fate 50k x2 bronze girdle"
+	line = "Sneeki auctions, 'BUYING Rogue Epic : D  // SELLING Shiny Brass Idol 700pp PST'"
 	//line = "Stockmarket auctions, 'WTS Mystic/Imbued Koada`Dal Mithril & Dwarven Cultural Armor Full sets and Individual Pieces available'"
 	//line = "'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
-	//line = "[Mon Jan 09 20:34:30 2017] Kandaar auctions, 'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
+	line = "[Mon Jan 09 20:34:30 2017] Kandaar auctions, 'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
 
 	a := Auction{}
 	err := extractParserInformationFromLine(line, &a)
@@ -147,7 +147,7 @@ func main() {
 		//fmt.Println("Checking if: " + string(buffer) + " is a prefix")
 		if trie.HasPrefix(strings.TrimSpace(string(buffer))) {
 			prevMatch = string(buffer)
-			//fmt.Println("Has prefix: ", string(buffer))
+			fmt.Println("Has prefix: ", string(buffer))
 			if i == len(line)-1 {
 				buffer = []byte{}
 				appendIfInTrie(prevMatch, selling, &a.Items)
@@ -155,13 +155,13 @@ func main() {
 				skippedChar = []byte{}
 			}
 		} else if prevMatch != "" {
-			//fmt.Println("Prev was: ", prevMatch)
+			fmt.Println("Prev was: ", prevMatch)
 			skippedChar = append(skippedChar, byte(c))
 			buffer = []byte{}
 			appendIfInTrie(prevMatch, selling, &a.Items)
 			prevMatch = ""
 		} else if !parsePriceAndQuantity(&buffer, &a) {
-			//fmt.Println(prevMatch)
+			fmt.Println(prevMatch)
 			prevMatch = ""
 			buffer = []byte{}
 			skippedChar = []byte{}
@@ -177,17 +177,18 @@ func main() {
 func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 	fmt.Println("Parsing: " + string(*buffer) + " for price data")
 	price_regex := regexp.MustCompile(`(?im)^(x ?)?(\d*\.?\d*)(k|p|pp| ?x)?$`)
-	price_string := string(*buffer)
+	price_string := strings.TrimSpace(string(*buffer))
 
 	matches := price_regex.FindStringSubmatch(price_string)
 	if len(matches) > 1 && len(strings.TrimSpace(matches[0])) > 0 && len(auction.Items) > 0 {
 		matches = matches[1:]
-		price, err := strconv.ParseFloat(strings.TrimSpace(matches[0]), 64)
+		price, err := strconv.ParseFloat(strings.TrimSpace(matches[1]), 64)
 		if err != nil {
+			//fmt.Println("error setting price: ", err)
 			price = 0.0
 		}
-		var delimiter string = strings.ToLower(matches[1])
-		var multiplier float64 = 0.0;
+		var delimiter string = strings.ToLower(matches[2])
+		var multiplier float64 = 1.0;
 		var isQuantity bool = false
 
 		switch delimiter {
@@ -196,22 +197,30 @@ func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 			case "k": multiplier = 1000.0; break;
 			case "pp": multiplier = 1.0; break;
 			case "m": multiplier = 1000000.0; break;
-			default: multiplier = 1.0; break;
+			default: multiplier = 1; break;
 		}
+
+		//fmt.Println("Delimeter is: ", delimiter)
 
 		// check if this was in-fact quantity data
 		var item *Item = &auction.Items[len(auction.Items)-1]
-		if isQuantity {
+		if isQuantity == true && price > 0.0 {
+			//fmt.Println("setting quantity: ", fmt.Sprint(int16(price)))
 			item.Quantity = int16(price)
-		} else {
+		} else if price > 0.0 {
+			// if we had WTS GEBS 1.5 we would assume 1.5 = 1.5k = 1500
+			price_without_delim_regex := regexp.MustCompile(`(?im)^([0-9]{1,}\.[0-9]{1,})$`)
+			matches = price_without_delim_regex.FindAllString(price_string, -1)
+			if len(matches) > 0 {
+				fmt.Println("Parsed: " + price_string + " got: ", matches)
+				multiplier = 1000.0
+			}
+
 			item.Price = float32(price * multiplier)
 		}
 
-		// Set the price on the auction item:
-		//auction.Items[len(auction.Items)-1].Price = float32(price * multiplier)
 		return true
 	}
-	fmt.Println("Matches is: ", matches)
-	fmt.Println("Price data is: ", string(*buffer))
+
 	return false
 }
