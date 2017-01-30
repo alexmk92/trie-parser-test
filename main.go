@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"errors"
 	"github.com/alexmk92/stringutil"
+	"strconv"
 )
 
 // Global connection to be used by the server
@@ -76,21 +77,25 @@ func main() {
 
 	fmt.Println("Populated")
 
-	appendIfInTrie := func(key string, out *[]string) {
-		fmt.Println("Checking if: " + key + " can be output")
-		if trie.Has(key) {
-			fmt.Println("JUP")
-			*out = append(*out, key)
+	appendIfInTrie := func(key string, forSale bool, out *[]Item) {
+		//fmt.Println("Checking if: " + key + " can be output")
+		if trie.Has(strings.TrimSpace(key)) {
+			//fmt.Println("JUP")
+			*out = append(*out, Item {
+				Name: strings.TrimSpace(key),
+				Price: 0.0,
+				Quantity: 1.0,
+				ForSale: forSale,
+			})
 		}
 	}
 
 	// Try to find item
-	items := []string{}
-	line := "wts 10 dose blood of the wolf wurmslayermask of wurms>|$swiftwindearthcallerwurmslayerdagger of marnek 250k today I've got some other cool items, WTB mask of wurmsAle 500p"
-	line = "Sneeki auctions, 'BUYING Rogue Epic : D  // SELLING Shiny Brass Idol 700pp PST'"
-	line = "Stockmarket auctions, 'WTS Mystic/Imbued Koada`Dal Mithril & Dwarven Cultural Armor Full sets and Individual Pieces available'"
-	line = "'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
-	line = "[Mon Jan 09 20:34:30 2017] Kandaar auctions, 'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
+	line := "wts 10 dose blood of the wolf wurmslayermask of wurms>|$swiftwindearthcallerwurmslayerdagger of marnek 250k today I've got some other cool items, WTB mask of wurmsAle 500p spear of fate 50k"
+	//line = "Sneeki auctions, 'BUYING Rogue Epic : D  // SELLING Shiny Brass Idol 700pp PST'"
+	//line = "Stockmarket auctions, 'WTS Mystic/Imbued Koada`Dal Mithril & Dwarven Cultural Armor Full sets and Individual Pieces available'"
+	//line = "'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
+	//line = "[Mon Jan 09 20:34:30 2017] Kandaar auctions, 'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
 
 	a := Auction{}
 	err := extractParserInformationFromLine(line, &a)
@@ -106,6 +111,8 @@ func main() {
 	buffer := []byte{}
 	selling := true
 	skippedChar := []byte{} // use an array so we can check the size
+
+	a.itemLine = line
 
 	var prevMatch string = ""
 	for i, c := range strings.ToLower(a.itemLine) {
@@ -137,31 +144,74 @@ func main() {
 			skippedChar = []byte{}
 		}
 		// extract the item name
-		fmt.Println("Checking if: " + string(buffer) + " is a prefix")
-		if trie.HasPrefix(string(buffer)) {
+		//fmt.Println("Checking if: " + string(buffer) + " is a prefix")
+		if trie.HasPrefix(strings.TrimSpace(string(buffer))) {
 			prevMatch = string(buffer)
-			fmt.Println("Has prefix: ", string(buffer))
+			//fmt.Println("Has prefix: ", string(buffer))
 			if i == len(line)-1 {
 				buffer = []byte{}
-				appendIfInTrie(prevMatch, &items)
+				appendIfInTrie(prevMatch, selling, &a.Items)
 				prevMatch = ""
 				skippedChar = []byte{}
 			}
 		} else if prevMatch != "" {
-			fmt.Println("Prev was: ", prevMatch)
+			//fmt.Println("Prev was: ", prevMatch)
 			skippedChar = append(skippedChar, byte(c))
 			buffer = []byte{}
-			appendIfInTrie(prevMatch, &items)
+			appendIfInTrie(prevMatch, selling, &a.Items)
 			prevMatch = ""
-		} else {
-			fmt.Println("chillin..." + string(c))
-			fmt.Println(prevMatch)
+		} else if !parsePriceAndQuantity(&buffer, &a) {
+			//fmt.Println(prevMatch)
 			prevMatch = ""
 			buffer = []byte{}
 			skippedChar = []byte{}
 		}
+		// Just continue execution, nothing else to be caught here!
 	}
 	fmt.Println("Buffer is: ", string(buffer))
 	fmt.Println("Is sell mode? ", selling)
-	fmt.Println("Items is: ", items)
+	fmt.Println("Items is: ", &a.Items)
+	fmt.Println("Total items: ", fmt.Sprint(len(a.Items)))
+}
+
+func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
+	fmt.Println("Parsing: " + string(*buffer) + " for price data")
+	price_regex := regexp.MustCompile(`(?im)^(x ?)?(\d*\.?\d*)(k|p|pp| ?x)?$`)
+	price_string := string(*buffer)
+
+	matches := price_regex.FindStringSubmatch(price_string)
+	if len(matches) > 1 && len(strings.TrimSpace(matches[0])) > 0 && len(auction.Items) > 0 {
+		matches = matches[1:]
+		price, err := strconv.ParseFloat(strings.TrimSpace(matches[0]), 64)
+		if err != nil {
+			price = 0.0
+		}
+		var delimiter string = strings.ToLower(matches[1])
+		var multiplier float64 = 0.0;
+		var isQuantity bool = false
+
+		switch delimiter {
+			case "x": isQuantity = true; break;
+			case "p": multiplier = 1.0; break;
+			case "k": multiplier = 1000.0; break;
+			case "pp": multiplier = 1.0; break;
+			case "m": multiplier = 1000000.0; break;
+			default: multiplier = 1.0; break;
+		}
+
+		// check if this was in-fact quantity data
+		var item *Item = &auction.Items[len(auction.Items)-1]
+		if isQuantity {
+			item.Quantity = int16(price)
+		} else {
+			item.Price = float32(price * multiplier)
+		}
+
+		// Set the price on the auction item:
+		//auction.Items[len(auction.Items)-1].Price = float32(price * multiplier)
+		return true
+	}
+	fmt.Println("Matches is: ", matches)
+	fmt.Println("Price data is: ", string(*buffer))
+	return false
 }
