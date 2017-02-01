@@ -217,17 +217,28 @@ func main() {
 	fmt.Println("Total items: ", fmt.Sprint(len(a.Items)))
 }
 
+// This method should be fairly self explanatory.  We simply use a regex to
+// extract matches from the input string and then write the data back out
+// to the last item on the input struct (this assumes that meta info is in
+// the order of ITEM QUANTITY PRICE or ITEM PRICE QUANTITY etc.
+// if the order is QUANTITY ITEM PRICE then the quantity will be assigned to
+// the prior item (assuming auction.items > 1) and the price would be assigned
+// to the correct item, if however auction.items == 0 then the extracted meta
+// inf is lost, this could possibly be parsed correctly by storing a buffer
+// of prices for previously parsed items when the legnth is 0, as we could then
+// assume that the rest of the items would follow the same pattern in that string...(TODO?)
 func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 	fmt.Println("Parsing: " + string(*buffer) + " for price data")
 	price_regex := regexp.MustCompile(`(?im)^(\d*\.?\d*)(k|p|pp)?$`)
 	price_string := string(*buffer)
 
-	if price_string[len(price_string)-1:] == " " {
-		fmt.Println("ITS A SPACE")
-		return false
-	}
-
+	// I don't think we need this as we now prevent spaces from being set as "SkipChar"
+	//if price_string[len(price_string)-1:] == " " {
+	//	fmt.Println("ITS A SPACE")
+	//	return false
+	//}
 	price_string = strings.TrimSpace(price_string)
+
 	matches := price_regex.FindStringSubmatch(price_string)
 	if len(matches) > 1 && len(strings.TrimSpace(matches[0])) > 0 && len(auction.Items) > 0 {
 		matches = matches[1:]
