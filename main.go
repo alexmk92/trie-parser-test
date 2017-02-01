@@ -98,6 +98,7 @@ func main() {
 	//line = "[Mon Jan 09 20:34:30 2017] Kandaar auctions, 'WTS Mithril Greaves 750 , Lodizal Shell Boots 1.5 , Runed Lava Pendant 800, Fire Emerald Platinum Ring x2 750pp, Orc Fang Earring x2 400pp'"
 	//line = "[Mon Feb 15 17:49:20 2016] Joeleen auctions, 'WTS Cat Eye Platinum Necklace 150p | Rune Etched Wedding Band 400p | Hexed Kerran Doll 200p'"
 	//line = "[Mon Feb 15 23:25:46 2016] Babanker auctions, 'WTS Chetari Wardstaff 3k, Crushed Topaz 400pp, Crushed Lava Ruby 300pp, Gauntlets of Iron Tactics 1.5k, Circlet of Shadow 3k, Cold Steel Vambraces 500pp, '"
+	//line = "wts dagger of marnek 250k x2"
 
 	a := Auction{}
 	err := extractParserInformationFromLine(line, &a)
@@ -147,7 +148,7 @@ func main() {
 		// once we append to the buffer we reset the skipped char to avoid prepending on
 		// subsequent calls
 		if len(skippedChar) > 0 {
-			buffer = append(skippedChar, buffer...)
+			buffer = append(skippedChar[0:1], buffer...)
 			skippedChar = []byte{}
 		}
 
@@ -157,6 +158,7 @@ func main() {
 		// finally we check to see if we're at the last position in the line,
 		// if we are then we reset the buffer and attempt to append to the trie
 		// if our buffer contains a match
+		fmt.Println("checking if trie has: ", string(buffer))
 		if trie.HasPrefix(strings.TrimLeft(string(buffer), " ")) {
 			prevMatch = string(buffer)
 			fmt.Println("Has prefix: ", string(buffer))
@@ -191,6 +193,8 @@ func main() {
 			// skippedChar is to catch cases where uses budge items together.
 			// Therefore we will only append non space characters.
 			if string(byte(c)) != " " { skippedChar = append(skippedChar, byte(c)) }
+			fmt.Println("Buffer is: ", (string(buffer)))
+			fmt.Println("Skipped buffer is: ", string(skippedChar))
 
 			appendIfInTrie(prevMatch, selling, &a.Items)
 		}
@@ -210,6 +214,10 @@ func main() {
 		}
 		// Just continue execution, nothing else to be caught here - this means that we have
 		// successfully extracted meta information, woot!
+		// NOTE: We reset the skippedChar buffer here as we found some meta information
+		// on the price or quantity, therefore we dont need to append on the next
+		// iteration of hte loop
+		skippedChar = []byte{}
 	}
 	fmt.Println("Buffer is: ", string(buffer))
 	fmt.Println("Is sell mode? ", selling)
@@ -229,7 +237,7 @@ func main() {
 // assume that the rest of the items would follow the same pattern in that string...(TODO?)
 func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 	fmt.Println("Parsing: " + string(*buffer) + " for price data")
-	price_regex := regexp.MustCompile(`(?im)^(\d*\.?\d*)(k|p|pp)?$`)
+	price_regex := regexp.MustCompile(`(?im)^(x ?)?(\d*\.?\d*)(k|p|pp| ?x)?$`)
 	price_string := string(*buffer)
 
 	// I don't think we need this as we now prevent spaces from being set as "SkipChar"
@@ -242,12 +250,13 @@ func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 	matches := price_regex.FindStringSubmatch(price_string)
 	if len(matches) > 1 && len(strings.TrimSpace(matches[0])) > 0 && len(auction.Items) > 0 {
 		matches = matches[1:]
-		price, err := strconv.ParseFloat(strings.TrimSpace(matches[0]), 64)
+		price, err := strconv.ParseFloat(strings.TrimSpace(matches[1]), 64)
 		if err != nil {
 			fmt.Println("error setting price: ", err)
 			price = 0.0
 		}
-		var delimiter string = strings.ToLower(matches[1])
+		var prelimiter string = strings.TrimSpace(strings.ToLower(matches[0]))
+		var delimiter string = strings.ToLower(matches[2])
 		var multiplier float64 = 1.0;
 		var isQuantity bool = false
 
@@ -260,7 +269,13 @@ func parsePriceAndQuantity(buffer *[]byte, auction *Auction) bool {
 			default: multiplier = 1; break;
 		}
 
+		if prelimiter == "x" {
+			isQuantity = true
+		}
+
 		fmt.Println("Delimeter is: ", delimiter)
+		fmt.Println("Mutliplier is: ", fmt.Sprint(multiplier))
+		fmt.Println("Price is: ", fmt.Sprint(price))
 
 		// check if we need to set a new multiplier
 		price_without_delim_regex := regexp.MustCompile(`(?im)^([0-9]{1,}\.[0-9]{1,})$`)
